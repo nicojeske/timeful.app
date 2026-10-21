@@ -59,6 +59,45 @@ docker compose down               # Stop services
 docker compose down -v            # Stop and remove volumes (deletes data!)
 ```
 
+## Prebuilt Image (fork)
+
+`.github/workflows/upstream-sync.yml` runs every Monday (and on manual dispatch): it merges `schej-it/timeful.app@main` into this fork's `main`, then builds the root `Dockerfile` — server with the frontend baked in — and pushes it to `ghcr.io/nicojeske/timeful` tagged `latest`, `YYYY-MM-DD` and `sha-<short>`. On a merge conflict it opens an issue named "Upstream sync conflict" and skips the build.
+
+```yaml
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
+  server:
+    image: ghcr.io/nicojeske/timeful:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3002:3002"
+    env_file:
+      - ./server/.env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      GIN_MODE: release
+    depends_on:
+      - mongo
+
+volumes:
+  mongo_data:
+```
+
+Repository settings used by the workflow:
+
+| Name                                                                         | Kind     | Purpose                                                                                                             |
+| ---------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `VUE_APP_GOOGLE_CLIENT_ID` / `VUE_APP_MICROSOFT_CLIENT_ID` / `VUE_APP_POSTHOG_API_KEY` | Variable | Baked into the frontend bundle at build time                                                         |
+| `UPSTREAM_REPO`                                                              | Variable | Override the upstream (default `schej-it/timeful.app`)                                                              |
+| `SYNC_TOKEN`                                                                 | Secret   | Fine-grained PAT (Contents + Workflows: read/write). Needed when upstream changes files in `.github/workflows/`, which `GITHUB_TOKEN` can't push |
+
+New GHCR packages are private by default; change visibility under the package settings if needed.
+
 ## Data & Backup
 
 Data is persisted in Docker volumes: `mongo_data`, `frontend_dist`, `server_logs`.

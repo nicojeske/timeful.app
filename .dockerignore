@@ -1,0 +1,28 @@
+# Used by the root Dockerfile (all-in-one image)
+
+.git/
+.github/
+
+# Dependencies
+**/node_modules/
+server/vendor/
+
+# Build outputs
+frontend/dist/
+server/server
+server/tmp/
+
+# Environment files
+**/.env
+**/.env.*
+!**/.env.template
+
+# Logs
+**/*.log
+server/logs/
+
+# Test coverage
+frontend/coverage/
+
+# OS
+**/.DS_Store

@@ -1,0 +1,139 @@
+name: Upstream Sync & Docker Image
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # Mondays 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  issues: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: ${{ vars.UPSTREAM_REPO || 'schej-it/timeful.app' }}
+  UPSTREAM_BRANCH: main
+  IMAGE_NAME: ghcr.io/nicojeske/timeful
+
+jobs:
+  sync:
+    if: github.repository == 'nicojeske/timeful.app'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.merge.outputs.sha }}
+      changed: ${{ steps.merge.outputs.changed }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          # A PAT with the "workflows" permission is needed to push upstream
+          # changes to .github/workflows; GITHUB_TOKEN can't do that.
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Merge upstream
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream "$UPSTREAM_BRANCH"
+
+          before=$(git rev-parse HEAD)
+          if ! git merge --no-edit "upstream/${UPSTREAM_BRANCH}"; then
+            git diff --name-only --diff-filter=U > conflicts.txt
+            git merge --abort
+            echo "merge_conflict=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if [ "$(git rev-parse HEAD)" != "$before" ]; then
+            git push origin HEAD:main
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Already up to date with ${UPSTREAM_REPO}"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Report merge conflict
+        if: failure() && steps.merge.outputs.merge_conflict == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Upstream sync conflict"
+          {
+            echo "Merging \`${UPSTREAM_REPO}@${UPSTREAM_BRANCH}\` into \`main\` failed with conflicts ([run](${RUN_URL})). No image was built."
+            echo
+            echo "Conflicting files:"
+            sed 's/^/- `/; s/$/`/' conflicts.txt
+            echo
+            echo "Resolve locally:"
+            echo '```sh'
+            echo "git fetch https://github.com/${UPSTREAM_REPO}.git ${UPSTREAM_BRANCH}"
+            echo "git merge FETCH_HEAD"
+            echo '```'
+          } > body.md
+
+          existing=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file body.md
+          else
+            gh issue create --title "$title" --body-file body.md
+          fi
+
+  build:
+    needs: sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value={{date 'YYYY-MM-DD'}}
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VUE_APP_POSTHOG_API_KEY=${{ vars.VUE_APP_POSTHOG_API_KEY }}
+            VUE_APP_GOOGLE_CLIENT_ID=${{ vars.VUE_APP_GOOGLE_CLIENT_ID }}
+            VUE_APP_MICROSOFT_CLIENT_ID=${{ vars.VUE_APP_MICROSOFT_CLIENT_ID }}

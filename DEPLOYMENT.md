@@ -165,6 +165,7 @@ Create `server/.env` from the template (`server/.env.template`).
 | `ANALYTICS_USERNAME` / `ANALYTICS_PASSWORD`  | Basic auth for /api/analytics routes         |
 | `SERVICE_ACCOUNT_KEY_PATH`                   | Google Cloud service account for Cloud Tasks |
 | `SLACK_*_WEBHOOK_URL`                        | Slack webhooks for notifications             |
+| `SLACK_SIGNING_SECRET`                       | Verifies /api/slackbot slash commands        |
 | `GMAIL_APP_PASSWORD` / `SCHEJ_EMAIL_ADDRESS` | Gmail SMTP for sending emails                |
 | `LISTMONK_*`                                 | Listmonk email service configuration         |
 | `DISCORD_BOT_TOKEN` / `GUILD_ID`             | Discord bot integration                      |

@@ -1,13 +1,21 @@
 package slackbot
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"schej.it/server/logger"
 	"schej.it/server/slackbot/commands"
 	"schej.it/server/utils"
 )
@@ -59,6 +67,11 @@ func InitSlackbot(router *gin.RouterGroup) {
 // @Success 200 {object} commands.Response "Text response"
 // @Router /slackbot [post]
 func execCommand(c *gin.Context) {
+	if !verifySlackSignature(c) {
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+
 	payload := struct {
 		Command     string `form:"command" binding:"required"`
 		Text        string `form:"text"`
@@ -96,7 +109,50 @@ func execCommand(c *gin.Context) {
 		return
 	}
 
-	go command.Execute(args, payload.ResponseUrl)
+	go func() {
+		// Recover from panics so a failing command doesn't take down the server
+		defer func() {
+			if err := recover(); err != nil {
+				logger.StdErr.Println(err)
+			}
+		}()
+
+		command.Execute(args, payload.ResponseUrl)
+	}()
 
 	c.Status(http.StatusOK)
+}
+
+// Returns whether the request was signed by Slack with SLACK_SIGNING_SECRET
+// (https://api.slack.com/authentication/verifying-requests-from-slack). Always false if the secret isn't set
+func verifySlackSignature(c *gin.Context) bool {
+	signingSecret := os.Getenv("SLACK_SIGNING_SECRET")
+	if signingSecret == "" {
+		return false
+	}
+
+	// Reject old requests so captured ones can't be replayed
+	timestamp := c.GetHeader("X-Slack-Request-Timestamp")
+	seconds, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+	age := time.Now().Unix() - seconds
+	if age > 5*60 || age < -5*60 {
+		return false
+	}
+
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
+	if err != nil {
+		return false
+	}
+	// Restore the body so it can still be bound
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+
+	mac := hmac.New(sha256.New, []byte(signingSecret))
+	mac.Write([]byte("v0:" + timestamp + ":"))
+	mac.Write(body)
+	expectedSignature := "v0=" + hex.EncodeToString(mac.Sum(nil))
+
+	return hmac.Equal([]byte(expectedSignature), []byte(c.GetHeader("X-Slack-Signature")))
 }

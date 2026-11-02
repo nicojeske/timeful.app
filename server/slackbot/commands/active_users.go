@@ -42,8 +42,8 @@ var activeUsers Command = Command{
 		}
 		if len(args) >= 2 {
 			days, err = strconv.Atoi(args[1])
-			if err != nil {
-				SendRawMessage(&Response{ResponseType: "ephemeral", Text: fmt.Sprintf("DAYS=%s is not a valid number!", args[1])}, webhookUrl)
+			if err != nil || days < 0 || days > 3650 {
+				SendRawMessage(&Response{ResponseType: "ephemeral", Text: fmt.Sprintf("DAYS=%s is not a number between 0 and 3650!", args[1])}, webhookUrl)
 				return
 			}
 		}

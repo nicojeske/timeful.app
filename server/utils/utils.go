@@ -75,8 +75,7 @@ func GetAccessTokenExpireDate(expiresIn int) time.Time {
 
 // Returns the ISO date string for the given date
 func GetDateString(date time.Time) string {
-	s, _ := date.UTC().MarshalText()
-	return string(s)[:10]
+	return date.UTC().Format("2006-01-02")
 }
 
 // Returns a time object with the given date and a time string in the form of "00:00:00"

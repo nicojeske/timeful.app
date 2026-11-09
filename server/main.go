@@ -75,6 +75,13 @@ func main() {
 
 	// Init router
 	router := gin.New()
+
+	// Only read the client IP from X-Forwarded-For when the request comes from our reverse proxy,
+	// otherwise clients could spoof it (the IP is used for rate limiting)
+	if err := router.SetTrustedProxies(getTrustedProxies()); err != nil {
+		log.Fatal(err)
+	}
+
 	router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		var statusColor, methodColor, resetColor string
 		if param.IsOutputColor() {
@@ -203,6 +210,15 @@ func validateSessionSecret() {
 	if len(secret) < 32 {
 		logger.StdErr.Panicln("SESSION_SECRET must be at least 32 characters long")
 	}
+}
+
+// Returns the IPs/CIDRs of the reverse proxies allowed to set X-Forwarded-For. Defaults to loopback
+// and private ranges, which covers a proxy on the same host or Docker network
+func getTrustedProxies() []string {
+	if proxies := os.Getenv("TRUSTED_PROXIES"); proxies != "" {
+		return utils.Map(strings.Split(proxies, ","), strings.TrimSpace)
+	}
+	return []string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"}
 }
 
 func noRouteHandler() gin.HandlerFunc {

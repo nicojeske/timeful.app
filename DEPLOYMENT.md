@@ -169,6 +169,7 @@ Create `server/.env` from the template (`server/.env.template`).
 | `GMAIL_APP_PASSWORD` / `SCHEJ_EMAIL_ADDRESS` | Gmail SMTP for sending emails                |
 | `LISTMONK_*`                                 | Listmonk email service configuration         |
 | `DISCORD_BOT_TOKEN` / `GUILD_ID`             | Discord bot integration                      |
+| `TRUSTED_PROXIES`                            | Proxy IPs allowed to set X-Forwarded-For     |
 
 See `server/.env.template` for the complete list.
 

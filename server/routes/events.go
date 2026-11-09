@@ -330,8 +330,8 @@ func editEvent(c *gin.Context) {
 		event.Timezone = payload.Timezone
 	}
 
-	// Update remindees
-	if event.Type == models.DOW || event.Type == models.SPECIFIC_DATES {
+	// Update remindees. Partial edits (e.g. description only) don't send remindees, so leave them as is
+	if payload.Remindees != nil && (event.Type == models.DOW || event.Type == models.SPECIFIC_DATES) {
 		origRemindees := utils.Coalesce(event.Remindees)
 		updatedRemindees := make([]models.Remindee, 0)
 		added, removed, kept := utils.FindAddedRemovedKept(payload.Remindees, utils.Map(origRemindees, func(r models.Remindee) string { return r.Email }))
@@ -370,8 +370,8 @@ func editEvent(c *gin.Context) {
 		event.Remindees = &updatedRemindees
 	}
 
-	// Update attendees
-	if event.Type == models.GROUP {
+	// Update attendees. Partial edits (e.g. description only) don't send attendees, so leave them as is
+	if payload.Attendees != nil && event.Type == models.GROUP {
 		origAttendees := db.GetAttendees(event.Id.Hex())
 		added, removed, kept := utils.FindAddedRemovedKept(payload.Attendees, utils.Map(origAttendees, func(a models.Attendee) string { return a.Email }))
 

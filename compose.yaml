@@ -35,7 +35,7 @@ services:
       context: ./server
     restart: unless-stopped
     ports:
-      - "3002:3002"
+      - "127.0.0.1:3002:3002"
     env_file:
       - ./server/.env
     environment:
